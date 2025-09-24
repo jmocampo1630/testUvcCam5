@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- USB Device Filter for UVC (USB Video Class) cameras -->
+<resources>
+    <!-- Generic UVC Camera Filter -->
+    <usb-device 
+        class="14" 
+        subclass="1" 
+        protocol="0" />
+    
+    <!-- Alternative: Detect any USB device with Video Interface Class -->
+    <usb-device 
+        class="239" 
+        subclass="2" 
+        protocol="1" />
+        
+    <!-- You can also specify by vendor-id and product-id for specific cameras -->
+    <!-- Example: Logitech cameras -->
+    <!--
+    <usb-device vendor-id="1133" />
+    -->
+    
+    <!-- Example: Microsoft cameras -->
+    <!--
+    <usb-device vendor-id="1118" />
+    -->
+</resources>
