@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Generic UVC (USB Video Class) device filter -->
+    <usb-device class="14" subclass="1" protocol="0" />
+    <usb-device class="14" subclass="2" protocol="0" />
+    
+    <!-- UVC Video Control Interface -->
+    <usb-device class="14" subclass="1" />
+    
+    <!-- UVC Video Streaming Interface -->
+    <usb-device class="14" subclass="2" />
+    
+    <!-- Generic USB Video Class devices -->
+    <usb-device class="14" />
+    
+    <!-- Some specific common UVC camera vendors (optional) -->
+    <!-- Logitech -->
+    <usb-device vendor-id="1133" />
+    
+    <!-- Microsoft -->
+    <usb-device vendor-id="1118" />
+    
+    <!-- Allow any USB device (fallback - comment out if too permissive) -->
+    <!-- <usb-device /> -->
+</resources>
