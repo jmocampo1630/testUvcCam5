@@ -18,10 +18,13 @@ interface UVCDevice {
 interface UVCCameraHook {
   devices: UVCDevice[];
   isMonitoring: boolean;
+  isStreaming: boolean;
   startMonitoring: () => Promise<void>;
   stopMonitoring: () => Promise<void>;
   requestPermission: (deviceName: string) => Promise<void>;
   hasPermission: (deviceName: string) => Promise<boolean>;
+  startVideoStream: (deviceName: string) => Promise<void>;
+  stopVideoStream: () => Promise<void>;
   refreshDevices: () => Promise<void>;
   error: string | null;
 }
@@ -29,6 +32,7 @@ interface UVCCameraHook {
 export const useUVCCamera = (): UVCCameraHook => {
   const [devices, setDevices] = useState<UVCDevice[]>([]);
   const [isMonitoring, setIsMonitoring] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const eventEmitterRef = useRef<any>(null);
 
@@ -88,6 +92,23 @@ export const useUVCCamera = (): UVCCameraHook => {
     setError('USB permission was denied by the user');
   }, []);
 
+  const handleUVCCameraReady = useCallback((device: any) => {
+    console.log('UVC Camera ready for streaming:', device);
+    setIsStreaming(true);
+    setError(null);
+  }, []);
+
+  const handleUVCCameraStopped = useCallback((device: any) => {
+    console.log('UVC Camera stopped:', device);
+    setIsStreaming(false);
+  }, []);
+
+  const handleUVCCameraError = useCallback((errorData: any) => {
+    console.log('UVC Camera error:', errorData);
+    setIsStreaming(false);
+    setError(errorData.error || 'UVC Camera error occurred');
+  }, []);
+
   useEffect(() => {
     // Initialize event emitter
     if (UVCCameraModule) {
@@ -103,6 +124,9 @@ export const useUVCCamera = (): UVCCameraHook => {
         DeviceEventEmitter.addListener('onUVCDeviceDisconnected', handleUVCDeviceDisconnected),
         DeviceEventEmitter.addListener('onUSBPermissionGranted', handlePermissionGranted),
         DeviceEventEmitter.addListener('onUSBPermissionDenied', handlePermissionDenied),
+        DeviceEventEmitter.addListener('onCameraReady', handleUVCCameraReady),
+        DeviceEventEmitter.addListener('onCameraStopped', handleUVCCameraStopped),
+        DeviceEventEmitter.addListener('onUVCCameraError', handleUVCCameraError),
       ];
 
       // Cleanup subscriptions
@@ -110,7 +134,7 @@ export const useUVCCamera = (): UVCCameraHook => {
         subscriptions.forEach(subscription => subscription.remove());
       };
     }
-  }, [handleDeviceAttached, handleDeviceDetached, handleUVCDeviceAttached, handleUVCDeviceDetached, handleUVCDeviceConnected, handleUVCDeviceDisconnected, handlePermissionGranted, handlePermissionDenied]);
+  }, [handleDeviceAttached, handleDeviceDetached, handleUVCDeviceAttached, handleUVCDeviceDetached, handleUVCDeviceConnected, handleUVCDeviceDisconnected, handlePermissionGranted, handlePermissionDenied, handleUVCCameraReady, handleUVCCameraStopped, handleUVCCameraError]);
 
   const startMonitoring = async (): Promise<void> => {
     try {
@@ -183,13 +207,52 @@ export const useUVCCamera = (): UVCCameraHook => {
     }
   }, []); // Empty dependencies since UVCCameraModule is stable
 
+  const startVideoStream = useCallback(async (deviceName: string): Promise<void> => {
+    try {
+      setError(null);
+      if (UVCCameraModule) {
+        const result = await UVCCameraModule.startVideoStream(deviceName);
+        console.log('Video stream started:', result);
+        // Note: isStreaming will be set by the onCameraReady event
+      } else {
+        throw new Error('UVCCameraModule not available');
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+      setError(errorMessage);
+      console.error('Failed to start video stream:', err);
+      throw err;
+    }
+  }, []);
+
+  const stopVideoStream = useCallback(async (): Promise<void> => {
+    try {
+      setError(null);
+      if (UVCCameraModule) {
+        const result = await UVCCameraModule.stopVideoStream();
+        console.log('Video stream stopped:', result);
+        // Note: isStreaming will be set by the onCameraStopped event
+      } else {
+        throw new Error('UVCCameraModule not available');
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+      setError(errorMessage);
+      console.error('Failed to stop video stream:', err);
+      throw err;
+    }
+  }, []);
+
   return {
     devices,
     isMonitoring,
+    isStreaming,
     startMonitoring,
     stopMonitoring,
     requestPermission,
     hasPermission,
+    startVideoStream,
+    stopVideoStream,
     refreshDevices,
     error,
   };

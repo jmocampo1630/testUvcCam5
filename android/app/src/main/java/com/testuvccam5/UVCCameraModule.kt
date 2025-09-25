@@ -17,8 +17,13 @@ import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.WritableArray
 import com.facebook.react.bridge.WritableMap
 import com.facebook.react.modules.core.DeviceEventManagerModule
+import com.facebook.react.uimanager.NativeViewHierarchyManager
+import com.facebook.react.uimanager.UIBlock
+import com.facebook.react.uimanager.UIManagerModule
 import com.jiangdg.usb.USBMonitor
 import com.jiangdg.uvc.UVCCamera
+import com.jiangdg.utils.HandlerThreadHandler
+import com.jiangdg.utils.BuildCheck
 
 class UVCCameraModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
 
@@ -28,6 +33,9 @@ class UVCCameraModule(reactContext: ReactApplicationContext) : ReactContextBaseJ
     private var uvcCamera: UVCCamera? = null
     private val ACTION_USB_PERMISSION = "com.testuvccam5.USB_PERMISSION"
     private var isInitialized = false
+    private var isStreaming = false
+    private var currentStreamingDevice: String? = null
+    private var currentCameraView: UVCCameraView? = null
     
     private val usbReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -108,7 +116,18 @@ class UVCCameraModule(reactContext: ReactApplicationContext) : ReactContextBaseJ
 
     private fun initializeUSBMonitor() {
         try {
+            Log.d(TAG, "Attempting to initialize USBMonitor from AAR...")
+            Log.d(TAG, "Checking if USBMonitor class is available...")
+            
+            // Test if the class is available from jiangdg library
+            val usbMonitorClass = Class.forName("com.jiangdg.usb.USBMonitor")
+            Log.d(TAG, "USBMonitor class found: ${usbMonitorClass.name}")
+            
+            val uvcCameraClass = Class.forName("com.jiangdg.uvc.UVCCamera")
+            Log.d(TAG, "UVCCamera class found: ${uvcCameraClass.name}")
+            
             // Initialize USBMonitor
+            Log.d(TAG, "Creating USBMonitor instance...")
             usbMonitor = USBMonitor(reactApplicationContext, object : USBMonitor.OnDeviceConnectListener {
                 override fun onAttach(device: UsbDevice?) {
                     device?.let {
@@ -120,6 +139,35 @@ class UVCCameraModule(reactContext: ReactApplicationContext) : ReactContextBaseJ
                 override fun onConnect(device: UsbDevice?, ctrlBlock: USBMonitor.UsbControlBlock?, createNew: Boolean) {
                     device?.let {
                         Log.d(TAG, "USBMonitor: Device connected - ${it.deviceName}")
+                        
+                        try {
+                            // Create UVC camera for streaming
+                            ctrlBlock?.let { controlBlock ->
+                                Log.d(TAG, "Creating UVCCamera instance...")
+                                uvcCamera = UVCCamera()
+                                uvcCamera?.open(controlBlock)
+                                
+                                Log.d(TAG, "UVC Camera opened successfully for device: ${it.deviceName}")
+                                sendEvent("onUVCCameraReady", createDeviceMap(it))
+                                
+                                // If we have a camera view, start preview automatically
+                                currentCameraView?.let { cameraView ->
+                                    uvcCamera?.let { camera ->
+                                        cameraView.startPreview(camera)
+                                        isStreaming = true
+                                        currentStreamingDevice = it.deviceName
+                                        Log.d(TAG, "Started preview on camera view")
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to open UVC camera", e)
+                            sendEvent("onUVCCameraError", Arguments.createMap().apply {
+                                putString("error", e.message)
+                                putString("deviceName", it.deviceName)
+                            })
+                        }
+                        
                         sendEvent("onUVCDeviceConnected", createDeviceMap(it))
                     }
                 }
@@ -127,6 +175,14 @@ class UVCCameraModule(reactContext: ReactApplicationContext) : ReactContextBaseJ
                 override fun onDisconnect(device: UsbDevice?, ctrlBlock: USBMonitor.UsbControlBlock?) {
                     device?.let {
                         Log.d(TAG, "USBMonitor: Device disconnected - ${it.deviceName}")
+                        
+                        // Stop preview and clean up
+                        currentCameraView?.stopPreview()
+                        uvcCamera?.close()
+                        uvcCamera = null
+                        isStreaming = false
+                        currentStreamingDevice = null
+                        
                         sendEvent("onUVCDeviceDisconnected", createDeviceMap(it))
                     }
                 }
@@ -146,14 +202,24 @@ class UVCCameraModule(reactContext: ReactApplicationContext) : ReactContextBaseJ
                 }
             })
             
+            Log.d(TAG, "USBMonitor instance created successfully")
             isInitialized = true
-            Log.d(TAG, "USBMonitor initialized successfully")
+            Log.d(TAG, "USBMonitor initialized successfully from AAR")
+        } catch (e: ClassNotFoundException) {
+            Log.e(TAG, "AAR classes not found: ${e.message}", e)
+            Log.e(TAG, "This indicates the AAR file is not properly integrated")
+            isInitialized = false
         } catch (e: NoClassDefFoundError) {
-            Log.w(TAG, "USBMonitor classes not found - falling back to standard USB monitoring", e)
-            isInitialized = true // Still mark as initialized since we can use standard monitoring
+            Log.e(TAG, "AAR class definition error: ${e.message}", e)
+            Log.e(TAG, "This indicates missing dependencies or library loading issues")
+            isInitialized = false
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "Native library loading error: ${e.message}", e)
+            Log.e(TAG, "This indicates native .so files are not properly loaded")
+            isInitialized = false
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to initialize USBMonitor - falling back to standard USB monitoring", e)
-            isInitialized = true // Still mark as initialized since we can use standard monitoring
+            Log.e(TAG, "General initialization error: ${e.message}", e)
+            isInitialized = false
         }
     }
 
@@ -268,6 +334,94 @@ class UVCCameraModule(reactContext: ReactApplicationContext) : ReactContextBaseJ
         } catch (e: Exception) {
             Log.e(TAG, "Failed to check USB permission", e)
             promise.reject("PERMISSION_CHECK_ERROR", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun startVideoStream(viewTag: Int, promise: Promise) {
+        try {
+            Log.d(TAG, "Starting video stream for view tag: $viewTag")
+            
+            val uiManager = reactApplicationContext.getNativeModule(UIManagerModule::class.java)
+            val view = uiManager?.resolveView(viewTag)
+            if (view is UVCCameraView) {
+                currentCameraView = view
+                
+                uvcCamera?.let { camera ->
+                    view.startPreview(camera)
+                    isStreaming = true
+                    promise.resolve(Arguments.createMap().apply {
+                        putBoolean("success", true)
+                        putString("message", "Video stream started")
+                        putString("deviceName", currentStreamingDevice)
+                    })
+                    Log.d(TAG, "Video stream started successfully")
+                } ?: run {
+                    promise.reject("NO_CAMERA", "No UVC camera available")
+                    Log.e(TAG, "No UVC camera available for streaming")
+                }
+            } else {
+                promise.reject("INVALID_VIEW", "View is not a UVCCameraView")
+                Log.e(TAG, "Invalid view type for video streaming")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start video stream", e)
+            promise.reject("STREAM_ERROR", "Failed to start video stream: ${e.message}")
+        }
+    }
+
+    @ReactMethod
+    fun stopVideoStream(promise: Promise) {
+        try {
+            Log.d(TAG, "Stopping video stream")
+            
+            currentCameraView?.let { view ->
+                view.stopPreview()
+            }
+            
+            uvcCamera?.close()
+            uvcCamera = null
+            
+            // Update streaming status
+            isStreaming = false
+            val stoppedDevice = currentStreamingDevice
+            currentStreamingDevice = null
+            
+            // Send stop event
+            if (stoppedDevice != null) {
+                val deviceInfo = Arguments.createMap().apply {
+                    putString("deviceName", stoppedDevice)
+                    putString("status", "stopped")
+                }
+                sendEvent("onCameraStopped", deviceInfo)
+            }
+            
+            promise.resolve(Arguments.createMap().apply {
+                putBoolean("success", true)
+                putString("message", "Video stream stopped")
+                putString("deviceName", stoppedDevice)
+            })
+            Log.d(TAG, "Video stream stopped successfully for device: $stoppedDevice")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to stop video stream", e)
+            promise.reject("STREAM_STOP_ERROR", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun getStreamingStatus(promise: Promise) {
+        try {
+            val statusMap = Arguments.createMap().apply {
+                putBoolean("isStreaming", isStreaming)
+                putString("streamingDevice", currentStreamingDevice)
+                putBoolean("hasCamera", uvcCamera != null)
+                putBoolean("hasView", currentCameraView != null)
+                putBoolean("isInitialized", isInitialized)
+            }
+            promise.resolve(statusMap)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get streaming status", e)
+            promise.reject("STREAM_STATUS_ERROR", e.message, e)
         }
     }
 

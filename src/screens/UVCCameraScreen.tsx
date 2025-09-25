@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { useUVCCamera } from '../hooks/useUVCCamera';
+import UVCCameraView, { UVCCameraViewRef } from '../UVCCameraView';
 
 interface UVCDevice {
   deviceName: string;
@@ -23,13 +24,16 @@ interface UVCDevice {
 }
 
 const UVCCameraScreen: React.FC = () => {
+  const cameraViewRef = useRef<UVCCameraViewRef>(null);
   const {
     devices,
     isMonitoring,
+    isStreaming,
     startMonitoring,
     stopMonitoring,
     requestPermission,
     hasPermission,
+    stopVideoStream,
     refreshDevices,
     error,
   } = useUVCCamera();
@@ -104,6 +108,49 @@ const UVCCameraScreen: React.FC = () => {
     } catch (err) {
       console.error('Failed to request permission:', err);
       Alert.alert('Error', 'Failed to request permission');
+    }
+  };
+
+  const handleStartStream = async () => {
+    if (!selectedDevice) {
+      Alert.alert('Error', 'Please select a device first');
+      return;
+    }
+
+    try {
+      const hasPerms = await hasPermission(selectedDevice.deviceName);
+      if (!hasPerms) {
+        Alert.alert('Permission Required', 'Please grant USB permission first');
+        return;
+      }
+      
+      // Use the camera view to start preview
+      if (cameraViewRef.current) {
+        await cameraViewRef.current.startPreview();
+        Alert.alert('Streaming', 'Video stream started! Camera view should show video.');
+      } else {
+        Alert.alert('Error', 'Camera view is not ready');
+      }
+    } catch (err) {
+      console.error('Failed to start video stream:', err);
+      Alert.alert('Error', `Failed to start video stream: ${err}`);
+    }
+  };
+
+  const handleStopStream = async () => {
+    try {
+      // Use the camera view to stop preview
+      if (cameraViewRef.current) {
+        await cameraViewRef.current.stopPreview();
+        Alert.alert('Streaming', 'Video stream stopped!');
+      } else {
+        // Fallback to module method
+        await stopVideoStream();
+        Alert.alert('Streaming', 'Video stream stopped!');
+      }
+    } catch (err) {
+      console.error('Failed to stop video stream:', err);
+      Alert.alert('Error', 'Failed to stop video stream');
     }
   };
 
@@ -198,6 +245,35 @@ const UVCCameraScreen: React.FC = () => {
               Check Status
             </Text>
           </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[
+              styles.button, 
+              styles.streamButton,
+              !hasDevicePermission && styles.disabledButton
+            ]}
+            onPress={() => handleStartStream()}
+            disabled={!hasDevicePermission || isStreaming}
+          >
+            <Text style={[
+              styles.buttonText,
+              styles.streamButtonText,
+              (!hasDevicePermission || isStreaming) && styles.disabledButtonText
+            ]}>
+              {isStreaming ? 'Streaming...' : 'Start Stream'}
+            </Text>
+          </TouchableOpacity>
+          
+          {isStreaming && (
+            <TouchableOpacity
+              style={[styles.button, styles.stopButton]}
+              onPress={() => handleStopStream()}
+            >
+              <Text style={[styles.buttonText, styles.stopButtonText]}>
+                Stop Stream
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       </TouchableOpacity>
     );
@@ -206,6 +282,32 @@ const UVCCameraScreen: React.FC = () => {
   return (
     <ScrollView style={styles.container}>
       <Text style={styles.title}>UVC Camera Detector</Text>
+      
+      {/* Video Preview Area */}
+      <View style={styles.videoPreviewContainer}>
+        <UVCCameraView
+          ref={cameraViewRef}
+          style={styles.cameraView}
+          onSurfaceCreated={() => console.log('Camera surface created')}
+          onSurfaceDestroyed={() => console.log('Camera surface destroyed')}
+          onPreviewStarted={() => console.log('Camera preview started')}
+          onPreviewStopped={() => console.log('Camera preview stopped')}
+          onError={(cameraError) => {
+            console.error('Camera error:', cameraError);
+            Alert.alert('Camera Error', cameraError.message);
+          }}
+        />
+        {!isStreaming && (
+          <View style={styles.cameraOverlay}>
+            <Text style={styles.cameraOverlayText}>
+              📹 Connect a UVC Camera and Start Streaming
+            </Text>
+            <Text style={styles.cameraOverlaySubtext}>
+              Video will appear here when streaming
+            </Text>
+          </View>
+        )}
+      </View>
       
       {error && (
         <View style={styles.errorContainer}>
@@ -344,6 +446,9 @@ const styles = StyleSheet.create({
   refreshButton: {
     backgroundColor: '#2196f3',
   },
+  streamButton: {
+    backgroundColor: '#ff9800',
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
@@ -477,6 +582,12 @@ const styles = StyleSheet.create({
   disabledButtonText: {
     color: '#9e9e9e',
   },
+  streamButtonText: {
+    color: '#fff',
+  },
+  stopButtonText: {
+    color: '#fff',
+  },
   noDevicesContainer: {
     backgroundColor: '#fff',
     padding: 24,
@@ -489,6 +600,55 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'center',
     lineHeight: 24,
+  },
+  videoPreviewContainer: {
+    backgroundColor: '#000',
+    padding: 20,
+    borderRadius: 8,
+    marginBottom: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 300,
+    borderWidth: 2,
+    borderColor: '#4caf50',
+    position: 'relative',
+  },
+  cameraView: {
+    width: '100%',
+    height: 300,
+    backgroundColor: '#000',
+  },
+  cameraOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+  },
+  cameraOverlayText: {
+    color: '#4caf50',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  cameraOverlaySubtext: {
+    color: '#81c784',
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  videoPreviewText: {
+    color: '#4caf50',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  videoPreviewSubtext: {
+    color: '#81c784',
+    fontSize: 14,
   },
 });
 
