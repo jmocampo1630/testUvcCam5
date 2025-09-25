@@ -4,17 +4,47 @@ buildscript {
         minSdkVersion = 24
         compileSdkVersion = 36
         targetSdkVersion = 36
-        ndkVersion = "27.1.12297006"
+        ndkVersion = "27.3.13750724"
         kotlinVersion = "2.1.20"
     }
     repositories {
         google()
         mavenCentral()
+        maven {
+            url 'https://raw.githubusercontent.com/saki4510t/libcommon/master/repository'
+            allowInsecureProtocol = true
+        }
     }
     dependencies {
         classpath("com.android.tools.build:gradle")
         classpath("com.facebook.react:react-native-gradle-plugin")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin")
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        maven {
+            url 'https://raw.githubusercontent.com/saki4510t/libcommon/master/repository'
+            allowInsecureProtocol = true
+        }
+    }
+    
+    // Force AndroidX and exclude old support libraries
+    configurations.all {
+        resolutionStrategy {
+            force 'androidx.core:core:1.13.1'
+            force 'androidx.media:media:1.0.0'
+        }
+        exclude group: 'com.android.support', module: 'support-compat'
+        exclude group: 'com.android.support', module: 'support-media-compat'
+        exclude group: 'com.android.support', module: 'support-core-utils'
+        exclude group: 'com.android.support', module: 'support-core-ui'
+        exclude group: 'com.android.support', module: 'support-fragment'
+        exclude group: 'com.android.support', module: 'support-annotations'
+        exclude group: 'com.android.support', module: 'appcompat-v7'
     }
 }
 
