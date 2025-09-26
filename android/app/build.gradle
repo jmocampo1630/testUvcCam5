@@ -111,6 +111,9 @@ dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
 
+    // UVC Camera library - temporarily commented out due to JitPack resolution issues
+    // implementation 'com.github.saki4510t:UVCCamera:master-SNAPSHOT'
+
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")
     } else {
