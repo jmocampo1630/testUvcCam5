@@ -118,7 +118,7 @@ dependencies {
     }
 
     // UVCCamera and libcommon dependencies
-    implementation files('libs/common-release.aar')
+    // implementation files('libs/common-release.aar')
     implementation files('libs/libuvccamera-release.aar')
     implementation files('libs/usbCameraCommon-release.aar')
 }
