@@ -18,6 +18,7 @@ class MainApplication : Application(), ReactApplication {
             PackageList(this).packages.apply {
               // Packages that cannot be autolinked yet can be added manually here, for example:
               // add(MyReactNativePackage())
+              add(UvcCameraPackage())
             }
 
         override fun getJSMainModuleName(): String = "index"
@@ -33,6 +34,25 @@ class MainApplication : Application(), ReactApplication {
 
   override fun onCreate() {
     super.onCreate()
+
+    // Defensive global handler: swallow SecurityException thrown from background
+    // threads (e.g., USBMonitor threads calling UsbDevice.getSerialNumber without
+    // permission) to avoid crashing the whole process. We still log the event.
+    Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+      if (throwable is SecurityException) {
+        // Log and swallow SecurityException coming from native USB threads.
+        // Use android.util.Log to ensure visibility in logcat.
+        try {
+          android.util.Log.w("MainApplication", "Swallowed SecurityException in thread " + thread.name, throwable)
+        } catch (ignored: Throwable) {
+        }
+        return@setDefaultUncaughtExceptionHandler
+      }
+      // For other exceptions, delegate to default handler so they are still visible.
+      val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+      defaultHandler?.uncaughtException(thread, throwable)
+    }
+
     loadReactNative(this)
   }
 }

@@ -2,7 +2,20 @@
 
   <uses-permission android:name="android.permission.INTERNET" />
   <uses-permission android:name="android.permission.CAMERA" />
-  <uses-feature android:name="android.hardware.usb.host" />
+  <!-- Optional permissions for video recording feature -->
+  <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+  <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+  <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+
+  <!-- USB Host permissions for UVC camera access -->
+  <!-- Note: android.permission.USB_PERMISSION and ACCESS_USB are not standard
+    Android SDK permissions; they are kept here as requested but most devices
+    rely on UsbManager.requestPermission and the usb host feature. -->
+  <uses-permission android:name="android.permission.USB_PERMISSION" />
+  <uses-permission android:name="android.permission.ACCESS_USB" />
+
+  <!-- USB Host feature declaration (required) -->
+  <uses-feature android:name="android.hardware.usb.host" android:required="true" />
 
     <application
       android:name=".MainApplication"
